@@ -492,88 +492,90 @@
           <h2>الديون الخارجية</h2>
         </div>
 
-        <div class="form-card external-debts-card">
-          <h3 class="external-debts-card__title">➕ إضافة دين/سلفة</h3>
+        <div class="external-debts-layout">
+          <div class="form-card external-debts-card">
+            <h3 class="external-debts-card__title">➕ إضافة دين/سلفة</h3>
 
-          <form id="externalDebtForm">
-            <div class="external-kind">
-              <label class="external-kind__option">
-                <input type="radio" name="externalKind" value="debt" checked>
-                <span>دين</span>
-              </label>
-              <label class="external-kind__option">
-                <input type="radio" name="externalKind" value="loan">
-                <span>سلفة</span>
-              </label>
-            </div>
-
-            <div class="external-grid">
-              <div class="form-group">
-                <label for="externalDebtType">نوع الدين</label>
-                <select id="externalDebtType" class="input" required></select>
+            <form id="externalDebtForm">
+              <div class="external-kind" role="radiogroup" aria-label="نوع العملية">
+                <label class="external-kind__option">
+                  <input type="radio" name="externalKind" value="debt" checked>
+                  <span>دين</span>
+                </label>
+                <label class="external-kind__option">
+                  <input type="radio" name="externalKind" value="loan">
+                  <span>سلفة</span>
+                </label>
               </div>
 
-              <div class="form-group">
-                <label for="externalDebtDate">التاريخ</label>
-                <input type="date" id="externalDebtDate" class="input" required>
-                <small class="form-hint">تاريخ تسجيل الدين/السلفة</small>
-              </div>
-
-              <div class="form-group external-type-add">
-                <label for="externalNewType">إضافة نوع جديد</label>
-                <div class="external-type-add__row">
-                  <input type="text" id="externalNewType" class="input" placeholder="مثال: إيجار، متجر، صديق...">
-                  <button type="button" class="btn btn-secondary" id="addExternalTypeBtn">إضافة</button>
+              <div class="external-grid">
+                <div class="form-group">
+                  <label for="externalDebtType">نوع الدين</label>
+                  <select id="externalDebtType" class="input" required></select>
                 </div>
-                <small class="form-hint">النوع الجديد ينضاف للقائمة فوراً.</small>
+
+                <div class="form-group">
+                  <label for="externalDebtDate">التاريخ</label>
+                  <input type="date" id="externalDebtDate" class="input" required>
+                  <small class="form-hint">تاريخ تسجيل الدين/السلفة</small>
+                </div>
+
+                <div class="form-group external-type-add">
+                  <label for="externalNewType">إضافة نوع جديد</label>
+                  <div class="external-type-add__row">
+                    <input type="text" id="externalNewType" class="input" placeholder="مثال: إيجار، متجر، صديق...">
+                    <button type="button" class="btn btn-secondary" id="addExternalTypeBtn">إضافة</button>
+                  </div>
+                  <small class="form-hint">النوع الجديد ينضاف للقائمة فوراً.</small>
+                </div>
+
+                <div class="form-group">
+                  <label for="externalDebtAmount">المبلغ (د.ع)</label>
+                  <input
+                    type="number"
+                    id="externalDebtAmount"
+                    class="input"
+                    required
+                    min="1"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="0"
+                  >
+                </div>
+
+                <div class="form-group">
+                  <label for="externalDebtNote">ملاحظة (اختياري)</label>
+                  <input type="text" id="externalDebtNote" class="input" placeholder="تفاصيل مختصرة...">
+                </div>
               </div>
 
-              <div class="form-group">
-                <label for="externalDebtAmount">المبلغ (د.ع)</label>
-                <input
-                  type="number"
-                  id="externalDebtAmount"
-                  class="input"
-                  required
-                  min="1"
-                  inputmode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="0"
-                >
-              </div>
+              <button type="submit" class="btn btn-primary btn-block">حفظ</button>
+            </form>
+          </div>
 
-              <div class="form-group">
-                <label for="externalDebtNote">ملاحظة (اختياري)</label>
-                <input type="text" id="externalDebtNote" class="input" placeholder="تفاصيل مختصرة...">
-              </div>
+          <div class="table-card">
+            <div class="table-card__head">
+              <h3>📋 جدول الديون</h3>
+              <div class="table-card__meta" id="externalDebtsSummary">—</div>
             </div>
-
-            <button type="submit" class="btn btn-primary btn-block">حفظ</button>
-          </form>
-        </div>
-
-        <div class="table-card">
-          <div class="table-card__head">
-            <h3>📋 جدول الديون</h3>
-            <div class="table-card__meta" id="externalDebtsSummary">—</div>
+            <div class="table-wrap">
+              <table class="data-table" aria-label="جدول الديون الخارجية">
+                <thead>
+                  <tr>
+                    <th>التاريخ</th>
+                    <th>النوع</th>
+                    <th>الفئة</th>
+                    <th>الإجمالي</th>
+                    <th>المدفوع</th>
+                    <th>المتبقي</th>
+                    <th>إجراء</th>
+                  </tr>
+                </thead>
+                <tbody id="externalDebtsTbody"></tbody>
+              </table>
+            </div>
+            <div class="empty-state" id="externalDebtsEmpty">لا توجد ديون خارجية حالياً.</div>
           </div>
-          <div class="table-wrap">
-            <table class="data-table" aria-label="جدول الديون الخارجية">
-              <thead>
-                <tr>
-                  <th>التاريخ</th>
-                  <th>النوع</th>
-                  <th>الفئة</th>
-                  <th>الإجمالي</th>
-                  <th>المدفوع</th>
-                  <th>المتبقي</th>
-                  <th>إجراء</th>
-                </tr>
-              </thead>
-              <tbody id="externalDebtsTbody"></tbody>
-            </table>
-          </div>
-          <div class="empty-state" id="externalDebtsEmpty">لا توجد ديون خارجية حالياً.</div>
         </div>
       </section>
 

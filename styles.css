@@ -4044,6 +4044,32 @@ body.dark-mode .menu-btn:hover {
 }
 
 /* ===== الديون الخارجية ===== */
+.external-debts-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .external-debts-layout {
+    grid-template-columns: 420px 1fr;
+    gap: 1.75rem;
+  }
+  .external-debts-card {
+    position: sticky;
+    top: 92px;
+  }
+}
+
+.external-debts-card {
+  background: linear-gradient(135deg, rgba(13, 148, 136, .06) 0%, rgba(255,255,255,.98) 55%, rgba(240, 253, 250, .70) 100%);
+  border: 1px solid rgba(13, 148, 136, .18);
+}
+body.dark-mode .external-debts-card {
+  background: linear-gradient(135deg, rgba(13, 148, 136, .12) 0%, rgba(26, 31, 46, .98) 65%, rgba(15, 23, 42, .65) 100%);
+  border-color: rgba(13, 148, 136, .25);
+}
+
 .external-debts-card__title {
   margin: 0 0 1.25rem;
   font-size: 1.1rem;
@@ -4065,9 +4091,15 @@ body.dark-mode .menu-btn:hover {
   font-weight: 700;
   transition: var(--transition-fast);
   user-select: none;
+  position: relative;
 }
 .external-kind__option input {
   accent-color: var(--primary);
+}
+.external-kind__option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 .external-kind__option span {
   display: inline-flex;
@@ -4083,6 +4115,10 @@ body.dark-mode .menu-btn:hover {
   border-color: rgba(13, 148, 136, .5);
   background: linear-gradient(135deg, rgba(13, 148, 136, .12) 0%, rgba(13, 148, 136, .06) 100%);
   color: var(--primary-dark);
+}
+.external-kind__option span:hover {
+  border-color: rgba(13, 148, 136, .35);
+  transform: translateY(-1px);
 }
 
 .external-grid {
@@ -4102,6 +4138,7 @@ body.dark-mode .menu-btn:hover {
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 .external-type-add__row .input {
   flex: 1;
@@ -4110,6 +4147,11 @@ body.dark-mode .menu-btn:hover {
 .external-type-add__row .btn {
   white-space: nowrap;
   padding: 0.75rem 1rem;
+}
+@media (max-width: 480px) {
+  .external-type-add__row .btn {
+    width: 100%;
+  }
 }
 
 .table-card {
@@ -4141,13 +4183,34 @@ body.dark-mode .menu-btn:hover {
   font-weight: 600;
 }
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto;
 }
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.92rem;
   min-width: 720px;
+}
+.data-table td, .data-table th {
+  font-variant-numeric: tabular-nums;
+}
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.table-wrap {
+  max-height: 62vh;
+}
+.table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+.table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, .35);
+  border-radius: 999px;
+}
+.table-wrap:hover::-webkit-scrollbar-thumb {
+  background: rgba(13, 148, 136, .35);
 }
 .data-table th {
   text-align: right;
