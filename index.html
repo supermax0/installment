@@ -445,8 +445,21 @@
           <div class="report-period-selector">
             <button class="period-btn active" data-period="month">هذا الشهر</button>
             <button class="period-btn" data-period="year">هذا العام</button>
+            <button class="period-btn" data-period="custom">مخصص</button>
             <button class="period-btn" data-period="all">الكل</button>
           </div>
+        </div>
+        <div class="advanced-filters" id="reportsFilters" style="display: none;">
+          <div class="filter-group">
+            <label for="reportDateFrom">من تاريخ:</label>
+            <input type="date" id="reportDateFrom" class="input input-sm">
+          </div>
+          <div class="filter-group">
+            <label for="reportDateTo">إلى تاريخ:</label>
+            <input type="date" id="reportDateTo" class="input input-sm">
+          </div>
+          <button class="btn btn-secondary btn-sm" id="applyReportRange">تطبيق</button>
+          <button class="btn btn-secondary btn-sm" id="clearReportRange">مسح</button>
         </div>
         <div class="reports-grid">
           <div class="report-card report-card--large">
@@ -463,6 +476,11 @@
             <span class="report-card__icon">💰</span>
             <h3 class="report-card__title">ملخص المدفوعات</h3>
             <div class="report-card__content" id="paymentsReport"></div>
+          </div>
+          <div class="report-card">
+            <span class="report-card__icon">🧾</span>
+            <h3 class="report-card__title">الديون الخارجية</h3>
+            <div class="report-card__content" id="externalDebtsReport"></div>
           </div>
           <div class="report-card">
             <span class="report-card__icon">📈</span>
@@ -591,6 +609,13 @@
           <form id="externalDebtPaymentForm" class="modal-form">
             <input type="hidden" id="externalDebtPaymentId">
             <div class="payment-summary" id="externalDebtPaymentSummary"></div>
+            <div class="form-group form-group--with-icon">
+              <label for="externalDebtPaymentDate">تاريخ السداد</label>
+              <div class="input-wrap">
+                <span class="input-wrap__icon">📅</span>
+                <input type="date" id="externalDebtPaymentDate" class="input" required>
+              </div>
+            </div>
             <div class="form-group form-group--with-icon">
               <label for="externalDebtPaymentAmount">مبلغ السداد (د.ع)</label>
               <div class="input-wrap">

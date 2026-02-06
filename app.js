@@ -253,6 +253,35 @@ function initApp() {
   startCloudSync();
 }
 
+function setupGlobalModalUXOnce() {
+  if (window.__MODAL_UX_SETUP__) return;
+  window.__MODAL_UX_SETUP__ = true;
+
+  // اغلاق بالنقر خارج المحتوى (Backdrop)
+  document.addEventListener('mousedown', (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    if (!target.classList.contains('modal')) return;
+
+    // إذا modal بدون id (ديناميك) الأفضل نحذفه حتى لا يبقى بالصفحة
+    if (!target.id) {
+      target.remove();
+      return;
+    }
+    target.classList.remove('open');
+  });
+
+  // اغلاق بزر ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = Array.from(document.querySelectorAll('.modal.open'));
+    if (!open.length) return;
+    const top = open[open.length - 1];
+    if (!top.id) top.remove();
+    else top.classList.remove('open');
+  });
+}
+
 function initEventListeners() {
   // التأكد من وجود العناصر قبل إضافة event listeners
   const safeAddListener = (id, event, handler) => {
@@ -457,8 +486,61 @@ function initEventListeners() {
     document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
     e.currentTarget.classList.add('active');
     if (e.currentTarget.dataset.period) {
-      renderReports(e.currentTarget.dataset.period);
+      const period = e.currentTarget.dataset.period;
+      const filtersEl = document.getElementById('reportsFilters');
+      if (filtersEl) filtersEl.style.display = (period === 'custom') ? '' : 'none';
+
+      if (period === 'custom') {
+        const fromEl = document.getElementById('reportDateFrom');
+        const toEl = document.getElementById('reportDateTo');
+        const today = new Date().toISOString().slice(0, 10);
+        const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+        if (fromEl && !fromEl.value) fromEl.value = currentReportRange.from || firstOfMonth;
+        if (toEl && !toEl.value) toEl.value = currentReportRange.to || today;
+        currentReportRange.from = fromEl?.value || null;
+        currentReportRange.to = toEl?.value || null;
+      }
+
+      renderReports(period);
     }
+  });
+
+  // Reports custom range
+  safeAddListener('applyReportRange', 'click', () => {
+    const fromEl = document.getElementById('reportDateFrom');
+    const toEl = document.getElementById('reportDateTo');
+    currentReportRange.from = fromEl?.value || null;
+    currentReportRange.to = toEl?.value || null;
+
+    // فعل زر "مخصص"
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.period-btn').forEach(b => {
+      if (b.dataset.period === 'custom') b.classList.add('active');
+    });
+    const filtersEl = document.getElementById('reportsFilters');
+    if (filtersEl) filtersEl.style.display = '';
+
+    renderReports('custom');
+    toast('تم تطبيق فترة التقرير');
+  });
+
+  safeAddListener('clearReportRange', 'click', () => {
+    const fromEl = document.getElementById('reportDateFrom');
+    const toEl = document.getElementById('reportDateTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    currentReportRange = { from: null, to: null };
+
+    const filtersEl = document.getElementById('reportsFilters');
+    if (filtersEl) filtersEl.style.display = 'none';
+
+    // رجوع للشهر
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.period-btn').forEach(b => {
+      if (b.dataset.period === 'month') b.classList.add('active');
+    });
+    renderReports('month');
+    toast('تم مسح فترة التقرير');
   });
   
   safeAddListener('applyFilters', 'click', () => {
@@ -560,6 +642,9 @@ function initEventListeners() {
   safeAddListener('closeExternalDebtGroupModal', 'click', () => {
     document.getElementById('externalDebtGroupModal')?.classList.remove('open');
   });
+
+  // تحسين تجربة النوافذ (مرة واحدة)
+  setupGlobalModalUXOnce();
 
   // Logout
   safeAddListener('logoutBtn', 'click', () => {
@@ -1782,6 +1867,12 @@ function renderExternalDebts() {
     container.querySelectorAll('.btn-view-external-debt').forEach(btn => {
       btn.addEventListener('click', () => openExternalDebtDetailModal(btn.dataset.id));
     });
+    container.querySelectorAll('.btn-delete-external-debt').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+        deleteExternalDebt(btn.dataset.id, { type: btn.dataset.type, kind: btn.dataset.kind });
+      });
+    });
     container.querySelectorAll('.btn-view-external-debt-group').forEach(btn => {
       btn.addEventListener('click', (e) => {
         // إذا كان الزر داخل summary لا نريد فتح/إغلاق details
@@ -1833,6 +1924,8 @@ function renderExternalDebts() {
             const paid = Number(item.paidAmount || 0);
             const remaining = getExternalDebtRemaining(item);
             const note = (item.note || '').toString().trim();
+            const t = (item.type || 'عام').toString().trim() || 'عام';
+            const k = item.kind === 'loan' ? 'loan' : 'debt';
             return `
               <div class="debt-group-item">
                 <div class="debt-group-item__main">
@@ -1852,6 +1945,7 @@ function renderExternalDebts() {
                     ? `<button class="btn btn-primary btn-sm btn-pay-external-debt" data-id="${escapeHtml(item.id)}">سداد</button>`
                     : `<span class="badge badge-success">مكتمل</span>`
                   }
+                  <button class="btn btn-danger btn-sm btn-delete-external-debt" data-id="${escapeHtml(item.id)}" data-type="${escapeHtml(t)}" data-kind="${escapeHtml(k)}">حذف</button>
                 </div>
               </div>
             `;
@@ -2053,7 +2147,17 @@ function openExternalDebtPaymentModal(externalDebtId) {
   const noteInput = document.getElementById('externalDebtPaymentNote');
   if (noteInput) noteInput.value = '';
 
+  const dateInput = document.getElementById('externalDebtPaymentDate');
+  if (dateInput) {
+    // default: today
+    const today = new Date().toISOString().slice(0, 10);
+    dateInput.value = today;
+  }
+
   modal.classList.add('open');
+
+  // UX: فوكس مباشر على التاريخ
+  if (dateInput) setTimeout(() => dateInput.focus(), 0);
 }
 
 function openExternalDebtDetailModal(externalDebtId) {
@@ -2140,6 +2244,15 @@ function openExternalDebtDetailModal(externalDebtId) {
         `}
       </div>
 
+        <div class="sale-detail-section">
+          <div class="sale-detail-section__head">
+            <span class="sale-detail-section__icon">🗑️</span>
+            <h4>الحذف</h4>
+          </div>
+          <button class="btn btn-danger btn-block" id="externalDebtDetailDeleteBtn">حذف الدين</button>
+          <div class="form-hint">سيتم حذف السجل وسجل السدادات المرتبط به.</div>
+        </div>
+
       <div class="sale-detail-section">
         <div class="sale-detail-section__head">
           <span class="sale-detail-section__icon">📋</span>
@@ -2152,7 +2265,7 @@ function openExternalDebtDetailModal(externalDebtId) {
                 <span class="sale-detail-installment__num">${i + 1}</span>
                 <span class="sale-detail-installment__amount">${formatMoney(p.amount || 0)}</span>
                 <span class="sale-detail-installment__note">${escapeHtml(p.note || 'سداد')}</span>
-                <span class="sale-detail-installment__date">${escapeHtml(formatDate(p.date || ''))}</span>
+                <span class="sale-detail-installment__date">${escapeHtml(formatDateOnly(p.date || ''))}</span>
               </li>
             `).join('')}
           </ul>
@@ -2167,6 +2280,11 @@ function openExternalDebtDetailModal(externalDebtId) {
   payBtn?.addEventListener('click', () => {
     modal.classList.remove('open');
     openExternalDebtPaymentModal(externalDebtId);
+  });
+
+  const delBtn = document.getElementById('externalDebtDetailDeleteBtn');
+  delBtn?.addEventListener('click', () => {
+    deleteExternalDebt(externalDebtId);
   });
 }
 
@@ -2269,6 +2387,7 @@ function openExternalDebtGroupModal(type, kind) {
                         ? `<button class="btn btn-primary btn-sm btn-pay-external-debt" data-id="${escapeHtml(d.id)}">سداد</button>`
                         : `<span class="badge badge-success">مكتمل</span>`
                       }
+                      <button class="btn btn-danger btn-sm btn-delete-external-debt" data-id="${escapeHtml(d.id)}" data-type="${escapeHtml(safeType)}" data-kind="${escapeHtml(safeKind)}">حذف</button>
                     </td>
                   </tr>
                 `;
@@ -2293,6 +2412,12 @@ function openExternalDebtGroupModal(type, kind) {
   content.querySelectorAll('.btn-view-external-debt').forEach(btn => {
     btn.addEventListener('click', () => openExternalDebtDetailModal(btn.dataset.id));
   });
+  content.querySelectorAll('.btn-delete-external-debt').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+      deleteExternalDebt(btn.dataset.id, { type: safeType, kind: safeKind });
+    });
+  });
 }
 
 function openExternalDebtGroupPay(type, kind) {
@@ -2313,6 +2438,15 @@ function openExternalDebtGroupPay(type, kind) {
     toast('لا يوجد متبقي للسداد في هذه الفئة', 'info');
     return;
   }
+
+  const kindLabel = safeKind === 'loan' ? 'سلفة' : 'دين';
+  const ok = confirm(
+    `تأكيد سداد كامل؟\n` +
+    `الفئة: ${safeType} (${kindLabel})\n` +
+    `عدد السجلات: ${payable.length}\n` +
+    `المبلغ الكلي: ${formatMoney(totalRemaining)}`
+  );
+  if (!ok) return;
 
   const nowIso = new Date().toISOString();
   const base = Date.now().toString(36);
@@ -2339,13 +2473,63 @@ function openExternalDebtGroupPay(type, kind) {
   renderDashboard();
 }
 
+function deleteExternalDebt(externalDebtId, opts = {}) {
+  const list = getExternalDebts();
+  const idx = list.findIndex(d => d.id === externalDebtId);
+  if (idx < 0) {
+    toast('الدين غير موجود', 'error');
+    return false;
+  }
+
+  const debt = list[idx];
+  const rem = getExternalDebtRemaining(debt);
+  const type = (debt.type || 'عام').toString().trim() || 'عام';
+  const kindLabel = debt.kind === 'loan' ? 'سلفة' : 'دين';
+  const hasPayments = Array.isArray(debt.payments) && debt.payments.length > 0;
+
+  const msg = [
+    `تأكيد حذف هذا الدين الخارجي؟`,
+    `النوع: ${type}`,
+    `الفئة: ${kindLabel}`,
+    rem > 0 ? `المتبقي: ${formatMoney(rem)}` : null,
+    hasPayments ? `تنبيه: سيتم حذف سجل السدادات أيضاً.` : null
+  ].filter(Boolean).join('\n');
+
+  if (!confirm(msg)) return false;
+
+  list.splice(idx, 1);
+  setExternalDebts(list);
+  addActivity('delete', `حذف دين خارجي: ${type} (${kindLabel})`, { externalDebtId });
+  toast('تم حذف الدين');
+
+  // إغلاق نافذة التفاصيل الفردية إن كانت مفتوحة
+  document.getElementById('externalDebtDetailModal')?.classList.remove('open');
+
+  // تحديث العرض
+  renderExternalDebts();
+  renderDashboard();
+
+  // إذا حذفنا من نافذة فئة مفتوحة، أعد تحميلها
+  const gModal = document.getElementById('externalDebtGroupModal');
+  if (gModal?.classList.contains('open') && opts && opts.type) {
+    openExternalDebtGroupModal(opts.type, opts.kind);
+  }
+
+  return true;
+}
+
 function saveExternalDebtPayment(e) {
   e.preventDefault();
   const externalDebtId = document.getElementById('externalDebtPaymentId')?.value;
   const amount = Number(document.getElementById('externalDebtPaymentAmount')?.value || 0);
   const note = (document.getElementById('externalDebtPaymentNote')?.value || '').toString().trim();
+  const dateOnly = (document.getElementById('externalDebtPaymentDate')?.value || '').toString().trim();
   if (!externalDebtId || !amount || amount < 1) {
     toast('أدخل مبلغ السداد', 'error');
+    return;
+  }
+  if (!dateOnly) {
+    toast('اختر تاريخ السداد', 'error');
     return;
   }
 
@@ -2362,11 +2546,18 @@ function saveExternalDebtPayment(e) {
     return;
   }
 
+  let paymentDateIso = new Date().toISOString();
+  // نحول YYYY-MM-DD إلى ISO مع وقت ثابت لتفادي اختلاف التوقيت
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+    const d = new Date(dateOnly + 'T12:00:00');
+    if (!Number.isNaN(d.getTime())) paymentDateIso = d.toISOString();
+  }
+
   const payment = {
     id: 'edp_' + Date.now().toString(36),
     amount,
     note: note || 'سداد',
-    date: new Date().toISOString()
+    date: paymentDateIso
   };
   debt.payments = debt.payments || [];
   debt.payments.push(payment);
@@ -2495,8 +2686,9 @@ function showPage(pageId) {
   } else if (pageId === 'notifications') {
     renderLateList();
   } else if (pageId === 'reports') {
+    const filtersEl = document.getElementById('reportsFilters');
+    if (filtersEl) filtersEl.style.display = (currentReportPeriod === 'custom') ? '' : 'none';
     renderReports(currentReportPeriod);
-    renderCharts(currentReportPeriod);
   } else if (pageId === 'external-debts') {
     renderExternalDebts();
   } else if (pageId === 'settings') {
@@ -2882,67 +3074,119 @@ function saveEditSale(e) {
 
 // ========== التقارير ==========
 let currentReportPeriod = 'month';
+let currentReportRange = { from: null, to: null }; // YYYY-MM-DD
+
+function parseDateInputToRangeDate(dateStr, isEnd = false) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + (isEnd ? 'T23:59:59.999' : 'T00:00:00.000'));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function inRangeDate(value, fromDate, toDate) {
+  if (!value) return false;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  if (fromDate && d < fromDate) return false;
+  if (toDate && d > toDate) return false;
+  return true;
+}
+
+function getReportRange(period) {
+  const now = new Date();
+  if (period === 'custom') {
+    const from = parseDateInputToRangeDate(currentReportRange.from, false);
+    const to = parseDateInputToRangeDate(currentReportRange.to, true);
+    const titleParts = [];
+    if (currentReportRange.from) titleParts.push(`من ${currentReportRange.from}`);
+    if (currentReportRange.to) titleParts.push(`إلى ${currentReportRange.to}`);
+    const title = titleParts.length ? `تقرير مخصص (${titleParts.join(' ')})` : 'تقرير مخصص';
+    return { from, to, title };
+  }
+  if (period === 'year') {
+    const y = now.getFullYear();
+    const from = new Date(y, 0, 1, 0, 0, 0, 0);
+    const to = new Date(y, 11, 31, 23, 59, 59, 999);
+    return { from, to, title: 'تقرير هذا العام' };
+  }
+  if (period === 'month') {
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const from = new Date(y, m, 1, 0, 0, 0, 0);
+    const to = new Date(y, m + 1, 0, 23, 59, 59, 999);
+    return { from, to, title: 'تقرير هذا الشهر' };
+  }
+  return { from: null, to: null, title: 'تقرير شامل' };
+}
+
 function renderReports(period = 'month') {
-  renderCharts(period);
   currentReportPeriod = period;
   const sales = getSales();
   const customers = getCustomers();
-  const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  
-  // فلترة حسب الفترة
-  let filteredSales = sales;
-  let periodTitle = 'تقرير هذا الشهر';
-  if (period === 'year') {
-    filteredSales = sales.filter(s => {
-      const saleDate = new Date(s.date);
-      return saleDate.getFullYear() === currentYear;
-    });
-    periodTitle = 'تقرير هذا العام';
-  } else if (period === 'month') {
-    filteredSales = sales.filter(s => {
-      const saleDate = new Date(s.date);
-      return saleDate.getMonth() === currentMonth && saleDate.getFullYear() === currentYear;
-    });
-    periodTitle = 'تقرير هذا الشهر';
-  } else {
-    periodTitle = 'تقرير شامل';
-  }
-  
-  document.getElementById('reportPeriodTitle').textContent = periodTitle;
-  
+  const externalDebts = getExternalDebts();
+
+  const range = getReportRange(period);
+  const filteredSales = (range.from || range.to) ? sales.filter(s => inRangeDate(s.date, range.from, range.to)) : sales.slice();
+  const filteredExternalDebts = (range.from || range.to)
+    ? externalDebts.filter(d => inRangeDate(d.date || d.createdAt, range.from, range.to))
+    : externalDebts.slice();
+
+  document.getElementById('reportPeriodTitle').textContent = range.title;
+
+  // مبيعات ضمن الفترة (حسب تاريخ البيع)
   let periodTotal = 0, periodPaid = 0, periodRemaining = 0;
   filteredSales.forEach(s => {
     periodTotal += s.totalAmount || 0;
     periodPaid += s.paidAmount || 0;
     periodRemaining += (s.totalAmount || 0) - (s.paidAmount || 0);
   });
-  
+
+  // تحصيل داخل الفترة (حسب تاريخ الدفعات) — مبيعات + ديون خارجية
+  let salesPaymentsCount = 0;
+  let salesPaymentsAmount = 0;
+  sales.forEach(s => {
+    (s.payments || []).forEach(p => {
+      if (inRangeDate(p.date, range.from, range.to)) {
+        salesPaymentsCount += 1;
+        salesPaymentsAmount += Number(p.amount || 0);
+      }
+    });
+  });
+
+  let externalPaymentsCount = 0;
+  let externalPaymentsAmount = 0;
+  externalDebts.forEach(d => {
+    (d.payments || []).forEach(p => {
+      if (inRangeDate(p.date, range.from, range.to)) {
+        externalPaymentsCount += 1;
+        externalPaymentsAmount += Number(p.amount || 0);
+      }
+    });
+  });
+
   document.getElementById('monthlyReport').innerHTML = `
     <div class="report-stat">
-      <span class="report-stat__label">عدد المبيعات</span>
+      <span class="report-stat__label">عدد المبيعات (ضمن الفترة)</span>
       <span class="report-stat__value">${filteredSales.length}</span>
     </div>
     <div class="report-stat">
-      <span class="report-stat__label">الإجمالي</span>
+      <span class="report-stat__label">إجمالي المبيعات</span>
       <span class="report-stat__value">${formatMoney(periodTotal)}</span>
     </div>
     <div class="report-stat">
-      <span class="report-stat__label">المدفوع</span>
+      <span class="report-stat__label">مدفوع (مبيعات ضمن الفترة)</span>
       <span class="report-stat__value">${formatMoney(periodPaid)}</span>
     </div>
     <div class="report-stat">
-      <span class="report-stat__label">المتبقي</span>
+      <span class="report-stat__label">متبقي (مبيعات ضمن الفترة)</span>
       <span class="report-stat__value">${formatMoney(periodRemaining)}</span>
     </div>
     <div class="report-stat">
-      <span class="report-stat__label">نسبة التحصيل</span>
-      <span class="report-stat__value">${periodTotal > 0 ? Math.round((periodPaid / periodTotal) * 100) : 0}%</span>
+      <span class="report-stat__label">تحصيل داخل الفترة (الكل)</span>
+      <span class="report-stat__value">${formatMoney(salesPaymentsAmount + externalPaymentsAmount)}</span>
     </div>
   `;
-  
-  // أفضل العملاء (حسب عدد المبيعات)
+
+  // أفضل العملاء (حسب مجموع المبيعات ضمن الفترة)
   const customerSales = {};
   filteredSales.forEach(s => {
     if (!customerSales[s.customerId]) {
@@ -2963,28 +3207,55 @@ function renderReports(period = 'month') {
         </div>
       `).join('')
     : '<p style="color: var(--text-muted); text-align: center; padding: 1rem;">لا توجد بيانات</p>';
-  
-  // ملخص المدفوعات
-  let totalPayments = 0;
-  filteredSales.forEach(s => {
-    if (s.payments) totalPayments += s.payments.length;
-  });
-  const periodPayments = filteredSales.reduce((sum, s) => sum + (s.payments?.length || 0), 0);
+
+  // ملخص المدفوعات (داخل الفترة)
+  const totalPaymentsCount = salesPaymentsCount + externalPaymentsCount;
+  const totalPaymentsAmount = salesPaymentsAmount + externalPaymentsAmount;
   document.getElementById('paymentsReport').innerHTML = `
     <div class="report-stat">
-      <span class="report-stat__label">إجمالي الأقساط</span>
-      <span class="report-stat__value">${totalPayments}</span>
+      <span class="report-stat__label">عدد الدفعات (داخل الفترة)</span>
+      <span class="report-stat__value">${totalPaymentsCount}</span>
     </div>
     <div class="report-stat">
-      <span class="report-stat__label">أقساط الفترة</span>
-      <span class="report-stat__value">${periodPayments}</span>
+      <span class="report-stat__label">تحصيل مبيعات (داخل الفترة)</span>
+      <span class="report-stat__value">${formatMoney(salesPaymentsAmount)}</span>
     </div>
     <div class="report-stat">
-      <span class="report-stat__label">متوسط القسط</span>
-      <span class="report-stat__value">${periodPayments > 0 ? formatMoney(Math.round(periodPaid / periodPayments)) : formatMoney(0)}</span>
+      <span class="report-stat__label">تحصيل ديون خارجية (داخل الفترة)</span>
+      <span class="report-stat__value">${formatMoney(externalPaymentsAmount)}</span>
+    </div>
+    <div class="report-stat">
+      <span class="report-stat__label">التحصيل الكلي (داخل الفترة)</span>
+      <span class="report-stat__value">${formatMoney(totalPaymentsAmount)}</span>
     </div>
   `;
-  
+
+  // الديون الخارجية ضمن الفترة (حسب تاريخ تسجيل الدين)
+  let extTotal = 0, extPaid = 0, extRemaining = 0;
+  filteredExternalDebts.forEach(d => {
+    extTotal += Number(d.totalAmount || 0);
+    extPaid += Number(d.paidAmount || 0);
+    extRemaining += getExternalDebtRemaining(d);
+  });
+  document.getElementById('externalDebtsReport').innerHTML = `
+    <div class="report-stat">
+      <span class="report-stat__label">عدد السجلات (ضمن الفترة)</span>
+      <span class="report-stat__value">${filteredExternalDebts.length}</span>
+    </div>
+    <div class="report-stat">
+      <span class="report-stat__label">الإجمالي</span>
+      <span class="report-stat__value">${formatMoney(extTotal)}</span>
+    </div>
+    <div class="report-stat">
+      <span class="report-stat__label">المدفوع</span>
+      <span class="report-stat__value">${formatMoney(extPaid)}</span>
+    </div>
+    <div class="report-stat">
+      <span class="report-stat__label">المتبقي</span>
+      <span class="report-stat__value">${formatMoney(extRemaining)}</span>
+    </div>
+  `;
+
   // إحصائيات المبيعات
   const completedSales = filteredSales.filter(s => {
     const rem = s.totalAmount - (s.paidAmount || 0);
@@ -3006,6 +3277,8 @@ function renderReports(period = 'month') {
       <span class="report-stat__value">${formatMoney(avgSaleAmount)}</span>
     </div>
   `;
+
+  renderCharts(period, range);
 }
 
 // ========== الإعدادات ==========
@@ -3466,66 +3739,83 @@ function renderUpcomingInstallments() {
 }
 
 // ========== الرسوم البيانية ==========
-function renderCharts(period = 'month') {
+function renderCharts(period = 'month', range = null) {
   const sales = getSales();
+  const externalDebts = getExternalDebts();
   const now = new Date();
-  const currentMonth = now.getMonth();
-  const currentYear = now.getFullYear();
-  
-  // فلترة حسب الفترة
-  let filteredSales = sales;
-  if (period === 'year') {
-    filteredSales = sales.filter(s => {
-      const saleDate = new Date(s.date);
-      return saleDate.getFullYear() === currentYear;
-    });
-  } else if (period === 'month') {
-    filteredSales = sales.filter(s => {
-      const saleDate = new Date(s.date);
-      return saleDate.getMonth() === currentMonth && saleDate.getFullYear() === currentYear;
-    });
-  }
-  
-  // رسم بياني للمبيعات الشهرية (آخر 6 أشهر)
+
+  const effectiveRange = range || getReportRange(period);
+  const filteredSales = (effectiveRange.from || effectiveRange.to)
+    ? sales.filter(s => inRangeDate(s.date, effectiveRange.from, effectiveRange.to))
+    : sales.slice();
+  const filteredExternalDebts = (effectiveRange.from || effectiveRange.to)
+    ? externalDebts.filter(d => inRangeDate(d.date || d.createdAt, effectiveRange.from, effectiveRange.to))
+    : externalDebts.slice();
+
+  // رسم بياني للمبيعات الشهرية (آخر 6 أشهر) + التحصيل الحقيقي حسب تواريخ الدفعات (مبيعات + ديون خارجية)
   const salesChart = document.getElementById('salesChart');
   if (salesChart) {
     const ctx = salesChart.getContext('2d');
     const months = [];
     const salesData = [];
     const paymentsData = [];
-    
+
+    const endBase = effectiveRange?.to || now;
     for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const date = new Date(endBase.getFullYear(), endBase.getMonth() - i, 1);
       const monthName = date.toLocaleDateString('ar-SA', { month: 'short' });
       months.push(monthName);
-      
+
       const monthSales = sales.filter(s => {
         const saleDate = new Date(s.date);
-        return saleDate.getMonth() === date.getMonth() && saleDate.getFullYear() === date.getFullYear();
+        return !Number.isNaN(saleDate.getTime()) &&
+          saleDate.getMonth() === date.getMonth() &&
+          saleDate.getFullYear() === date.getFullYear();
       });
-      
+
       const monthTotal = monthSales.reduce((sum, s) => sum + (s.totalAmount || 0), 0);
-      const monthPaid = monthSales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
-      
+
+      let monthCollected = 0;
+      monthSales.forEach(s => {
+        (s.payments || []).forEach(p => {
+          const pd = new Date(p.date);
+          if (!Number.isNaN(pd.getTime()) && pd.getMonth() === date.getMonth() && pd.getFullYear() === date.getFullYear()) {
+            monthCollected += Number(p.amount || 0);
+          }
+        });
+      });
+      externalDebts.forEach(d => {
+        (d.payments || []).forEach(p => {
+          const pd = new Date(p.date);
+          if (!Number.isNaN(pd.getTime()) && pd.getMonth() === date.getMonth() && pd.getFullYear() === date.getFullYear()) {
+            monthCollected += Number(p.amount || 0);
+          }
+        });
+      });
+
       salesData.push(monthTotal);
-      paymentsData.push(monthPaid);
+      paymentsData.push(monthCollected);
     }
-    
-    drawBarChart(ctx, months, salesData, paymentsData, 'المبيعات', 'المدفوعات');
+
+    drawBarChart(ctx, months, salesData, paymentsData, 'المبيعات', 'التحصيل');
   }
-  
-  // رسم بياني دائري للمدفوعات
+
+  // رسم بياني دائري: مدفوع/متبقي ضمن نفس فترة التقرير (مبيعات + ديون خارجية)
   const paymentsChart = document.getElementById('paymentsChart');
   if (paymentsChart) {
     const ctx = paymentsChart.getContext('2d');
     let totalPaid = 0;
     let totalRemaining = 0;
-    
+
     filteredSales.forEach(s => {
       totalPaid += s.paidAmount || 0;
       totalRemaining += (s.totalAmount || 0) - (s.paidAmount || 0);
     });
-    
+    filteredExternalDebts.forEach(d => {
+      totalPaid += Number(d.paidAmount || 0);
+      totalRemaining += getExternalDebtRemaining(d);
+    });
+
     drawPieChart(ctx, totalPaid, totalRemaining);
   }
 }
@@ -3538,11 +3828,23 @@ function drawBarChart(ctx, labels, data1, data2, label1, label2) {
   const chartHeight = height - padding * 2;
   const barWidth = chartWidth / labels.length / 3;
   const maxValue = Math.max(...data1, ...data2, 1);
+
+  const cssVar = (name, fallback) => {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
+  const axisColor = cssVar('--border', '#e2e8f0');
+  const labelColor = cssVar('--text-muted', '#64748b');
+  const textColor = cssVar('--text', '#1e293b');
   
   ctx.clearRect(0, 0, width, height);
   
   // رسم المحاور
-  ctx.strokeStyle = '#e2e8f0';
+  ctx.strokeStyle = axisColor;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(padding, padding);
@@ -3565,7 +3867,7 @@ function drawBarChart(ctx, labels, data1, data2, label1, label2) {
     ctx.fillRect(x + barWidth, height - padding - bar2Height, barWidth, bar2Height);
     
     // التسميات
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = labelColor;
     ctx.font = '10px Tajawal';
     ctx.textAlign = 'center';
     ctx.fillText(label, x + barWidth, height - padding + 15);
@@ -3574,14 +3876,14 @@ function drawBarChart(ctx, labels, data1, data2, label1, label2) {
   // المفتاح
   ctx.fillStyle = '#0d9488';
   ctx.fillRect(width - 100, 10, 15, 15);
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = textColor;
   ctx.font = '11px Tajawal';
   ctx.textAlign = 'right';
   ctx.fillText(label1, width - 80, 22);
   
   ctx.fillStyle = '#059669';
   ctx.fillRect(width - 100, 30, 15, 15);
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = textColor;
   ctx.fillText(label2, width - 80, 42);
 }
 
@@ -3592,11 +3894,22 @@ function drawPieChart(ctx, paid, remaining) {
   const centerY = height / 2;
   const radius = Math.min(width, height) / 2 - 20;
   const total = paid + remaining;
+
+  const cssVar = (name, fallback) => {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
+  const labelColor = cssVar('--text-muted', '#64748b');
+  const textColor = cssVar('--text', '#1e293b');
   
   ctx.clearRect(0, 0, width, height);
   
   if (total === 0) {
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = labelColor;
     ctx.font = '14px Tajawal';
     ctx.textAlign = 'center';
     ctx.fillText('لا توجد بيانات', centerX, centerY);
@@ -3623,7 +3936,7 @@ function drawPieChart(ctx, paid, remaining) {
   ctx.fill();
   
   // النص
-  ctx.fillStyle = '#1e293b';
+  ctx.fillStyle = textColor;
   ctx.font = 'bold 12px Tajawal';
   ctx.textAlign = 'center';
   const paidPercent = Math.round((paid / total) * 100);
