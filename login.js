@@ -31,72 +31,104 @@
       return;
     }
 
-    // ملاحظة: لم نعد ننشئ بيانات افتراضية نهائياً
-    window.auth.ensureDefaultUser();
-
-    // إذا مسجل دخول مسبقاً، نروح مباشرة
-    if (window.auth.isLoggedIn()) {
-      redirectAfterLogin();
-      return;
-    }
-
     const loginForm = $('loginForm');
+    const loginBtn = loginForm?.querySelector('button[type="submit"]');
+    const changeForm = $('changePasswordForm');
+    const changeBtn = changeForm?.querySelector('button[type="submit"]');
 
-    const hasUsers = typeof window.auth.hasUsers === 'function'
-      ? window.auth.hasUsers()
-      : (window.auth.getUsers().length > 0);
+    const setBusy = (busy, text) => {
+      if (loginBtn) loginBtn.disabled = !!busy;
+      if (changeBtn) changeBtn.disabled = !!busy;
+      if (busy) setMessage(text || 'جاري التحميل...');
+    };
 
-    if (!hasUsers) {
-      setMessage('لا يوجد مستخدمين مضبوطين على هذا الجهاز. يرجى إضافة مستخدم من النسخة/الجهاز الذي تم إعداد الدخول عليه.');
-    }
+    (async () => {
+      // ملاحظة: لم نعد ننشئ بيانات افتراضية نهائياً
+      window.auth.ensureDefaultUser();
 
-    $('loginUsername')?.focus();
+      // إذا مسجل دخول مسبقاً، نروح مباشرة
+      if (window.auth.isLoggedIn()) {
+        redirectAfterLogin();
+        return;
+      }
 
-    loginForm?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      setMessage('');
+      // مزامنة المستخدمين من السحابة إن توفرت
+      setBusy(true, 'جاري مزامنة المستخدمين...');
+      try {
+        if (typeof window.auth.ready === 'function') {
+          await window.auth.ready();
+        }
+      } catch (_) {
+        // تجاهل: نكمل بالوضع المحلي
+      } finally {
+        setBusy(false, '');
+        setMessage('');
+      }
 
-      const hasUsersNow = typeof window.auth.hasUsers === 'function'
+      const hasUsers = typeof window.auth.hasUsers === 'function'
         ? window.auth.hasUsers()
         : (window.auth.getUsers().length > 0);
-      if (!hasUsersNow) {
-        setMessage('لا يمكن تسجيل الدخول لأنه لا يوجد مستخدمين مضبوطين على هذا الجهاز.');
-        return;
+
+      if (!hasUsers) {
+        setMessage('لا يوجد مستخدمين مضبوطين (محلياً أو بالسحابة). يرجى إعداد مستخدم على جهاز واحد أولاً.');
       }
 
-      const username = $('loginUsername')?.value || '';
-      const password = $('loginPassword')?.value || '';
-      const remember = !!$('rememberMe')?.checked;
+      $('loginUsername')?.focus();
 
-      const result = window.auth.login({ username, password, remember });
-      if (!result.ok) {
-        setMessage(result.error || 'حدث خطأ.');
-        return;
-      }
+      loginForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setMessage('');
 
-      redirectAfterLogin();
-    });
+        const hasUsersNow = typeof window.auth.hasUsers === 'function'
+          ? window.auth.hasUsers()
+          : (window.auth.getUsers().length > 0);
+        if (!hasUsersNow) {
+          setMessage('لا يمكن تسجيل الدخول لأنه لا يوجد مستخدمين مضبوطين.');
+          return;
+        }
 
-    const changeForm = $('changePasswordForm');
-    changeForm?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      setMessage('');
+        const username = $('loginUsername')?.value || '';
+        const password = $('loginPassword')?.value || '';
+        const remember = !!$('rememberMe')?.checked;
 
-      const username = $('cpUsername')?.value || '';
-      const oldPassword = $('cpOld')?.value || '';
-      const newPassword = $('cpNew')?.value || '';
+        setBusy(true, 'جاري تسجيل الدخول...');
+        try {
+          const result = await window.auth.login({ username, password, remember });
+          if (!result.ok) {
+            setMessage(result.error || 'حدث خطأ.');
+            return;
+          }
+          redirectAfterLogin();
+        } finally {
+          setBusy(false, '');
+        }
+      });
 
-      const result = window.auth.changePassword({ username, oldPassword, newPassword });
-      if (!result.ok) {
-        setMessage(result.error || 'تعذر تغيير كلمة المرور.');
-        return;
-      }
+      changeForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        setMessage('');
 
-      setMessage('تم تغيير كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
-      $('loginUsername').value = username;
-      $('loginPassword').value = '';
-      $('loginPassword')?.focus();
-    });
+        const username = $('cpUsername')?.value || '';
+        const oldPassword = $('cpOld')?.value || '';
+        const newPassword = $('cpNew')?.value || '';
+
+        setBusy(true, 'جاري تغيير كلمة المرور...');
+        try {
+          const result = await window.auth.changePassword({ username, oldPassword, newPassword });
+          if (!result.ok) {
+            setMessage(result.error || 'تعذر تغيير كلمة المرور.');
+            return;
+          }
+
+          setMessage('تم تغيير كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
+          $('loginUsername').value = username;
+          $('loginPassword').value = '';
+          $('loginPassword')?.focus();
+        } finally {
+          setBusy(false, '');
+        }
+      });
+    })();
   });
 })();
 

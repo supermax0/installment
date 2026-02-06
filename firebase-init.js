@@ -241,6 +241,38 @@ async function setAppDataFirestore(data) {
   }
 }
 
+// ========== Auth Users (Single Document) ==========
+/**
+ * قراءة مستخدمي تسجيل الدخول (Firestore)
+ * نخزنهم كوثيقة واحدة لسهولة المزامنة بين الأجهزة
+ * ملاحظة: لا نخزن كلمات مرور صريحة، فقط hash + salt
+ */
+async function getAuthUsersFirestore() {
+  if (!firebaseReady) return null;
+  try {
+    const docSnap = await db.collection("auth").doc("users").get();
+    if (!docSnap.exists) return null;
+    return docSnap.data();
+  } catch (error) {
+    console.error("Error getting auth users:", error);
+    return null;
+  }
+}
+
+/**
+ * حفظ مستخدمي تسجيل الدخول (Firestore)
+ */
+async function setAuthUsersFirestore(data) {
+  if (!firebaseReady) return false;
+  try {
+    await db.collection("auth").doc("users").set(data);
+    return true;
+  } catch (error) {
+    console.error("Error saving auth users:", error);
+    return false;
+  }
+}
+
 // ========== Realtime Database Functions ==========
 
 /**
@@ -462,6 +494,8 @@ window.firebaseDB = {
   subscribeToSalesFirestore,
   getAppDataFirestore,
   setAppDataFirestore,
+  getAuthUsersFirestore,
+  setAuthUsersFirestore,
   
   // Realtime Database
   getCustomersRealtime,
