@@ -558,6 +558,8 @@
               <h3>📋 جدول الديون</h3>
               <div class="table-card__meta" id="externalDebtsSummary">—</div>
             </div>
+            <div class="debt-type-summary" id="externalDebtsTypeSummary" aria-label="ملخص حسب نوع الدين"></div>
+            <div class="form-hint">ملاحظة: الجدول التفصيلي يظهر داخل زر <strong>تفاصيل الفئة</strong>.</div>
             <div class="table-wrap">
               <table class="data-table" aria-label="جدول الديون الخارجية">
                 <thead>
@@ -605,6 +607,32 @@
             </div>
             <button type="submit" class="btn btn-primary btn-block btn--modal">تسجيل السداد</button>
           </form>
+        </div>
+      </div>
+
+      <!-- modal تفاصيل دين خارجي -->
+      <div class="modal" id="externalDebtDetailModal">
+        <div class="modal-content modal-wide modal--sale-detail">
+          <div class="modal-header modal-header--sale-detail">
+            <h3><span class="modal-header__icon">🧾</span> تفاصيل الدين الخارجي</h3>
+            <div class="modal-header-actions">
+              <button class="modal-close" id="closeExternalDebtDetailModal">&times;</button>
+            </div>
+          </div>
+          <div id="externalDebtDetailContent"></div>
+        </div>
+      </div>
+
+      <!-- modal تفاصيل فئة (نوع + دين/سلفة) -->
+      <div class="modal" id="externalDebtGroupModal">
+        <div class="modal-content modal-wide modal--sale-detail">
+          <div class="modal-header modal-header--sale-detail">
+            <h3><span class="modal-header__icon">📋</span> تفاصيل الفئة</h3>
+            <div class="modal-header-actions">
+              <button class="modal-close" id="closeExternalDebtGroupModal">&times;</button>
+            </div>
+          </div>
+          <div id="externalDebtGroupContent"></div>
         </div>
       </div>
 

@@ -554,6 +554,12 @@ function initEventListeners() {
     document.getElementById('externalDebtPaymentModal')?.classList.remove('open');
   });
   safeAddListener('externalDebtPaymentForm', 'submit', saveExternalDebtPayment);
+  safeAddListener('closeExternalDebtDetailModal', 'click', () => {
+    document.getElementById('externalDebtDetailModal')?.classList.remove('open');
+  });
+  safeAddListener('closeExternalDebtGroupModal', 'click', () => {
+    document.getElementById('externalDebtGroupModal')?.classList.remove('open');
+  });
 
   // Logout
   safeAddListener('logoutBtn', 'click', () => {
@@ -1753,6 +1759,7 @@ function renderExternalDebts() {
   const tbody = document.getElementById('externalDebtsTbody');
   const empty = document.getElementById('externalDebtsEmpty');
   const summaryEl = document.getElementById('externalDebtsSummary');
+  const typeSummaryEl = document.getElementById('externalDebtsTypeSummary');
   if (!tbody || !empty) return;
 
   const list = getExternalDebts()
@@ -1767,9 +1774,127 @@ function renderExternalDebts() {
     summaryEl.textContent = `عدد: ${list.length} · المتبقي: ${formatMoney(totalRemaining)}`;
   }
 
+  const attachPayButtons = (container) => {
+    if (!container) return;
+    container.querySelectorAll('.btn-pay-external-debt').forEach(btn => {
+      btn.addEventListener('click', () => openExternalDebtPaymentModal(btn.dataset.id));
+    });
+    container.querySelectorAll('.btn-view-external-debt').forEach(btn => {
+      btn.addEventListener('click', () => openExternalDebtDetailModal(btn.dataset.id));
+    });
+    container.querySelectorAll('.btn-view-external-debt-group').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        // إذا كان الزر داخل summary لا نريد فتح/إغلاق details
+        try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+        openExternalDebtGroupModal(btn.dataset.type, btn.dataset.kind);
+      });
+    });
+    container.querySelectorAll('.btn-pay-external-debt-group').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        // إذا كان الزر داخل summary لا نريد فتح/إغلاق details
+        try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
+        openExternalDebtGroupPay(btn.dataset.type, btn.dataset.kind);
+      });
+    });
+  };
+
+  // ملخص: بطاقة لكل (نوع + فئة) مع تفاصيل
+  if (typeSummaryEl) {
+    const map = {};
+    list.forEach(d => {
+      const t = (d.type || 'عام').toString().trim() || 'عام';
+      const k = d.kind === 'loan' ? 'loan' : 'debt';
+      const key = `${t}__${k}`;
+      const total = Number(d.totalAmount || 0);
+      const paid = Number(d.paidAmount || 0);
+      const rem = getExternalDebtRemaining(d);
+      if (!map[key]) map[key] = { type: t, kind: k, count: 0, total: 0, paid: 0, remaining: 0, items: [] };
+      map[key].count += 1;
+      map[key].total += total;
+      map[key].paid += paid;
+      map[key].remaining += rem;
+      map[key].items.push(d);
+    });
+    const rows = Object.values(map)
+      .filter(x => x.total > 0 || x.remaining > 0 || x.count > 0)
+      .sort((a, b) => (b.remaining - a.remaining) || (b.total - a.total) || a.type.localeCompare(b.type));
+
+    typeSummaryEl.innerHTML = rows.length
+      ? rows.map(g => {
+          const kindLabel = g.kind === 'loan' ? 'سلفة' : 'دين';
+          const kindClass = g.kind === 'loan' ? 'debt-kind-badge--loan' : 'debt-kind-badge--debt';
+          const itemsSorted = g.items
+            .slice()
+            .sort((a, b) => (getExternalDebtRemaining(b) - getExternalDebtRemaining(a)) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+          const detailsHtml = itemsSorted.map(item => {
+            const debtDate = item.date || item.createdAt || '';
+            const total = Number(item.totalAmount || 0);
+            const paid = Number(item.paidAmount || 0);
+            const remaining = getExternalDebtRemaining(item);
+            const note = (item.note || '').toString().trim();
+            return `
+              <div class="debt-group-item">
+                <div class="debt-group-item__main">
+                  <div class="debt-group-item__line">
+                    <span class="debt-group-item__date">${escapeHtml(formatDateOnly(debtDate))}</span>
+                    <span class="debt-group-item__rem ${remaining > 0 ? 'debt-group-item__rem--pos' : 'debt-group-item__rem--zero'}">${formatMoney(remaining)}</span>
+                  </div>
+                  ${note ? `<div class="debt-group-item__note">${escapeHtml(note)}</div>` : ''}
+                  <div class="debt-group-item__sub">
+                    <span>إجمالي: ${formatMoney(total)}</span>
+                    <span>مدفوع: ${formatMoney(paid)}</span>
+                  </div>
+                </div>
+                <div class="debt-group-item__action">
+                  <button class="btn btn-secondary btn-sm btn-view-external-debt" data-id="${escapeHtml(item.id)}">تفاصيل</button>
+                  ${remaining > 0
+                    ? `<button class="btn btn-primary btn-sm btn-pay-external-debt" data-id="${escapeHtml(item.id)}">سداد</button>`
+                    : `<span class="badge badge-success">مكتمل</span>`
+                  }
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          return `
+            <details class="debt-group">
+              <summary class="debt-group__summary">
+                <div class="debt-group__title">
+                  <span class="debt-group__name">${escapeHtml(g.type)}</span>
+                  <span class="debt-kind-badge ${kindClass}">${kindLabel}</span>
+                </div>
+                <div class="debt-group__meta">
+                  <span class="debt-group__count">${g.count} سجل</span>
+                  <span class="debt-group__remaining">متبقي: ${formatMoney(g.remaining)}</span>
+                  <button type="button" class="btn btn-secondary btn-sm btn-view-external-debt-group" data-type="${escapeHtml(g.type)}" data-kind="${escapeHtml(g.kind)}">تفاصيل الفئة</button>
+                  ${g.remaining > 0
+                    ? `<button type="button" class="btn btn-primary btn-sm btn-pay-external-debt-group" data-type="${escapeHtml(g.type)}" data-kind="${escapeHtml(g.kind)}">سداد كامل</button>`
+                    : ''
+                  }
+                </div>
+              </summary>
+              <div class="debt-group__body">
+                <div class="debt-group__totals">
+                  <span>إجمالي: <strong>${formatMoney(g.total)}</strong></span>
+                  <span>مدفوع: <strong>${formatMoney(g.paid)}</strong></span>
+                </div>
+                <div class="debt-group__list">
+                  ${detailsHtml || '<div class="form-hint">لا توجد تفاصيل.</div>'}
+                </div>
+              </div>
+            </details>
+          `;
+        }).join('')
+      : '';
+
+    attachPayButtons(typeSummaryEl);
+  }
+
   if (list.length === 0) {
     tbody.innerHTML = '';
     empty.classList.add('visible');
+    if (typeSummaryEl) typeSummaryEl.innerHTML = '';
     return;
   }
 
@@ -1786,16 +1911,17 @@ function renderExternalDebts() {
 
     return `
       <tr data-external-debt-id="${escapeHtml(d.id)}">
-        <td style="white-space: nowrap;">${escapeHtml(formatDateOnly(debtDate))}</td>
-        <td>
-          <strong>${escapeHtml(d.type || 'عام')}</strong>
-          ${note ? `<div class="form-hint" style="margin: 0.2rem 0 0;">${escapeHtml(note)}</div>` : ''}
+        <td data-label="التاريخ" style="white-space: nowrap;">${escapeHtml(formatDateOnly(debtDate))}</td>
+        <td data-label="النوع">
+          <strong class="external-debt-type">${escapeHtml(d.type || 'عام')}</strong>
+          ${note ? `<div class="form-hint external-debt-note">${escapeHtml(note)}</div>` : ''}
         </td>
-        <td><span class="debt-kind-badge ${kindClass}">${kind}</span></td>
-        <td>${formatMoney(total)}</td>
-        <td>${formatMoney(paid)}</td>
-        <td class="debt-remaining ${remainingClass}">${formatMoney(remaining)}</td>
-        <td>
+        <td data-label="الفئة"><span class="debt-kind-badge ${kindClass}">${kind}</span></td>
+        <td data-label="الإجمالي">${formatMoney(total)}</td>
+        <td data-label="المدفوع">${formatMoney(paid)}</td>
+        <td data-label="المتبقي" class="debt-remaining ${remainingClass}">${formatMoney(remaining)}</td>
+        <td data-label="إجراء">
+          <button class="btn btn-secondary btn-sm btn-view-external-debt" data-id="${escapeHtml(d.id)}">تفاصيل</button>
           ${remaining > 0
             ? `<button class="btn btn-primary btn-sm btn-pay-external-debt" data-id="${escapeHtml(d.id)}">سداد</button>`
             : `<span class="badge badge-success">مكتمل</span>`
@@ -1805,9 +1931,7 @@ function renderExternalDebts() {
     `;
   }).join('');
 
-  tbody.querySelectorAll('.btn-pay-external-debt').forEach(btn => {
-    btn.addEventListener('click', () => openExternalDebtPaymentModal(btn.dataset.id));
-  });
+  attachPayButtons(tbody);
 }
 
 function addExternalDebtTypeFromUI() {
@@ -1930,6 +2054,289 @@ function openExternalDebtPaymentModal(externalDebtId) {
   if (noteInput) noteInput.value = '';
 
   modal.classList.add('open');
+}
+
+function openExternalDebtDetailModal(externalDebtId) {
+  const debt = getExternalDebts().find(d => d.id === externalDebtId);
+  if (!debt) {
+    toast('الدين غير موجود', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('externalDebtDetailModal');
+  const content = document.getElementById('externalDebtDetailContent');
+  if (!modal || !content) return;
+
+  const kindLabel = debt.kind === 'loan' ? 'سلفة' : 'دين';
+  const total = Number(debt.totalAmount || 0);
+  const paid = Number(debt.paidAmount || 0);
+  const remaining = getExternalDebtRemaining(debt);
+  const date = debt.date || debt.createdAt || '';
+  const note = (debt.note || '').toString().trim();
+
+  const payments = Array.isArray(debt.payments) ? debt.payments.slice() : [];
+  payments.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+  content.innerHTML = `
+    <div class="sale-detail-body">
+      <div class="sale-detail-row">
+        <div class="sale-detail-info">
+          <span class="sale-detail-info__icon">📅</span>
+          <div>
+            <span class="sale-detail-info__label">التاريخ</span>
+            <span class="sale-detail-info__value">${escapeHtml(formatDateOnly(date))}</span>
+          </div>
+        </div>
+        <div class="sale-detail-info">
+          <span class="sale-detail-info__icon">🏷️</span>
+          <div>
+            <span class="sale-detail-info__label">النوع</span>
+            <span class="sale-detail-info__value">${escapeHtml(debt.type || 'عام')}</span>
+          </div>
+        </div>
+        <div class="sale-detail-info">
+          <span class="sale-detail-info__icon">📌</span>
+          <div>
+            <span class="sale-detail-info__label">الفئة</span>
+            <span class="sale-detail-info__value">${escapeHtml(kindLabel)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sale-detail-amounts">
+        <div class="sale-detail-amount sale-detail-amount--total">
+          <span class="sale-detail-amount__label">الإجمالي</span>
+          <span class="sale-detail-amount__value">${formatMoney(total)}</span>
+        </div>
+        <div class="sale-detail-amount sale-detail-amount--paid">
+          <span class="sale-detail-amount__label">المدفوع</span>
+          <span class="sale-detail-amount__value">${formatMoney(paid)}</span>
+        </div>
+        <div class="sale-detail-amount sale-detail-amount--remaining">
+          <span class="sale-detail-amount__label">المتبقي</span>
+          <span class="sale-detail-amount__value">${formatMoney(remaining)}</span>
+        </div>
+      </div>
+
+      ${note ? `
+      <div class="sale-detail-section sale-detail-section--contract">
+        <div class="sale-detail-section__head">
+          <span class="sale-detail-section__icon">📝</span>
+          <h4>ملاحظة</h4>
+        </div>
+        <div class="contract-box">${escapeHtml(note)}</div>
+      </div>
+      ` : ''}
+
+      <div class="sale-detail-section">
+        <div class="sale-detail-section__head">
+          <span class="sale-detail-section__icon">💵</span>
+          <h4>السداد</h4>
+        </div>
+        ${remaining > 0 ? `
+          <button class="btn btn-primary btn-block" id="externalDebtDetailPayBtn">سداد الآن</button>
+        ` : `
+          <div class="empty-state visible" style="margin: 0;">الدين مكتمل ✓</div>
+        `}
+      </div>
+
+      <div class="sale-detail-section">
+        <div class="sale-detail-section__head">
+          <span class="sale-detail-section__icon">📋</span>
+          <h4>سجل السدادات</h4>
+        </div>
+        ${payments.length ? `
+          <ul class="sale-detail-installments">
+            ${payments.map((p, i) => `
+              <li class="sale-detail-installment">
+                <span class="sale-detail-installment__num">${i + 1}</span>
+                <span class="sale-detail-installment__amount">${formatMoney(p.amount || 0)}</span>
+                <span class="sale-detail-installment__note">${escapeHtml(p.note || 'سداد')}</span>
+                <span class="sale-detail-installment__date">${escapeHtml(formatDate(p.date || ''))}</span>
+              </li>
+            `).join('')}
+          </ul>
+        ` : `<div class="empty-state visible" style="margin: 0;">لا توجد سدادات بعد.</div>`}
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('open');
+
+  const payBtn = document.getElementById('externalDebtDetailPayBtn');
+  payBtn?.addEventListener('click', () => {
+    modal.classList.remove('open');
+    openExternalDebtPaymentModal(externalDebtId);
+  });
+}
+
+function openExternalDebtGroupModal(type, kind) {
+  const modal = document.getElementById('externalDebtGroupModal');
+  const content = document.getElementById('externalDebtGroupContent');
+  if (!modal || !content) return;
+
+  const safeType = (type || 'عام').toString().trim() || 'عام';
+  const safeKind = (kind === 'loan') ? 'loan' : 'debt';
+  const kindLabel = safeKind === 'loan' ? 'سلفة' : 'دين';
+
+  const list = getExternalDebts()
+    .filter(d => (String(d.type || 'عام').trim() || 'عام') === safeType && ((d.kind === 'loan') ? 'loan' : 'debt') === safeKind)
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+  let total = 0, paid = 0, remaining = 0;
+  list.forEach(d => {
+    total += Number(d.totalAmount || 0);
+    paid += Number(d.paidAmount || 0);
+    remaining += getExternalDebtRemaining(d);
+  });
+
+  content.innerHTML = `
+    <div class="sale-detail-body">
+      <div class="sale-detail-row">
+        <div class="sale-detail-info">
+          <span class="sale-detail-info__icon">🏷️</span>
+          <div>
+            <span class="sale-detail-info__label">النوع</span>
+            <span class="sale-detail-info__value">${escapeHtml(safeType)}</span>
+          </div>
+        </div>
+        <div class="sale-detail-info">
+          <span class="sale-detail-info__icon">📌</span>
+          <div>
+            <span class="sale-detail-info__label">الفئة</span>
+            <span class="sale-detail-info__value">${escapeHtml(kindLabel)}</span>
+          </div>
+        </div>
+        <div class="sale-detail-info">
+          <span class="sale-detail-info__icon">🧾</span>
+          <div>
+            <span class="sale-detail-info__label">عدد السجلات</span>
+            <span class="sale-detail-info__value">${list.length}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sale-detail-amounts">
+        <div class="sale-detail-amount sale-detail-amount--total">
+          <span class="sale-detail-amount__label">الإجمالي</span>
+          <span class="sale-detail-amount__value">${formatMoney(total)}</span>
+        </div>
+        <div class="sale-detail-amount sale-detail-amount--paid">
+          <span class="sale-detail-amount__label">المدفوع</span>
+          <span class="sale-detail-amount__value">${formatMoney(paid)}</span>
+        </div>
+        <div class="sale-detail-amount sale-detail-amount--remaining">
+          <span class="sale-detail-amount__label">المتبقي</span>
+          <span class="sale-detail-amount__value">${formatMoney(remaining)}</span>
+        </div>
+      </div>
+
+      <div class="sale-detail-section">
+        <div class="sale-detail-section__head">
+          <span class="sale-detail-section__icon">📋</span>
+          <h4>الجدول</h4>
+        </div>
+        <div class="table-wrap" style="max-height:none; overflow: auto;">
+          <table class="data-table" aria-label="جدول الفئة">
+            <thead>
+              <tr>
+                <th>التاريخ</th>
+                <th>ملاحظة</th>
+                <th>الإجمالي</th>
+                <th>المدفوع</th>
+                <th>المتبقي</th>
+                <th>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.map(d => {
+                const debtDate = d.date || d.createdAt || '';
+                const t = Number(d.totalAmount || 0);
+                const p = Number(d.paidAmount || 0);
+                const r = getExternalDebtRemaining(d);
+                const note = (d.note || '').toString().trim();
+                return `
+                  <tr>
+                    <td data-label="التاريخ">${escapeHtml(formatDateOnly(debtDate))}</td>
+                    <td data-label="ملاحظة">${note ? escapeHtml(note) : '—'}</td>
+                    <td data-label="الإجمالي">${formatMoney(t)}</td>
+                    <td data-label="المدفوع">${formatMoney(p)}</td>
+                    <td data-label="المتبقي" class="debt-remaining ${r > 0 ? 'debt-remaining--pos' : 'debt-remaining--zero'}">${formatMoney(r)}</td>
+                    <td data-label="إجراء">
+                      <button class="btn btn-secondary btn-sm btn-view-external-debt" data-id="${escapeHtml(d.id)}">تفاصيل</button>
+                      ${r > 0
+                        ? `<button class="btn btn-primary btn-sm btn-pay-external-debt" data-id="${escapeHtml(d.id)}">سداد</button>`
+                        : `<span class="badge badge-success">مكتمل</span>`
+                      }
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${list.length === 0 ? `<div class="empty-state visible" style="margin: 0.75rem 0 0;">لا توجد سجلات.</div>` : ''}
+      </div>
+    </div>
+  `;
+
+  modal.classList.add('open');
+
+  // ربط الأزرار داخل النافذة
+  content.querySelectorAll('.btn-pay-external-debt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.classList.remove('open');
+      openExternalDebtPaymentModal(btn.dataset.id);
+    });
+  });
+  content.querySelectorAll('.btn-view-external-debt').forEach(btn => {
+    btn.addEventListener('click', () => openExternalDebtDetailModal(btn.dataset.id));
+  });
+}
+
+function openExternalDebtGroupPay(type, kind) {
+  const safeType = (type || 'عام').toString().trim() || 'عام';
+  const safeKind = (kind === 'loan') ? 'loan' : 'debt';
+
+  const all = getExternalDebts();
+  const target = all
+    .filter(d => (String(d.type || 'عام').trim() || 'عام') === safeType && ((d.kind === 'loan') ? 'loan' : 'debt') === safeKind);
+
+  const payable = target
+    .map(d => ({ d, rem: getExternalDebtRemaining(d) }))
+    .filter(x => x.rem > 0);
+
+  const totalRemaining = payable.reduce((sum, x) => sum + x.rem, 0);
+
+  if (!totalRemaining || totalRemaining <= 0) {
+    toast('لا يوجد متبقي للسداد في هذه الفئة', 'info');
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+  const base = Date.now().toString(36);
+  const note = `سداد كامل للفئة: ${safeType} (${safeKind === 'loan' ? 'سلفة' : 'دين'})`;
+
+  payable.forEach((x, idx) => {
+    const debt = x.d;
+    const amount = x.rem;
+    const payment = {
+      id: 'edp_' + base + '_' + idx,
+      amount,
+      note,
+      date: nowIso
+    };
+    debt.payments = debt.payments || [];
+    debt.payments.push(payment);
+    debt.paidAmount = Number(debt.paidAmount || 0) + amount;
+  });
+
+  setExternalDebts(all);
+  addActivity('payment', `سداد كامل لفئة خارجية: ${safeType} - ${formatMoney(totalRemaining)}`, { externalDebtType: safeType, externalDebtKind: safeKind, amount: totalRemaining });
+  toast(`تم سداد كامل المتبقي: ${formatMoney(totalRemaining)}`);
+  renderExternalDebts();
+  renderDashboard();
 }
 
 function saveExternalDebtPayment(e) {
